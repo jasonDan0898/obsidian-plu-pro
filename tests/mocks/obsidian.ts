@@ -15,6 +15,7 @@ export class TFile {
   parent: { path: string } | null = null;
 }
 export class TFolder {
+  name = '';
   path = '';
   children: Array<TFile | TFolder> = [];
 }
@@ -22,6 +23,9 @@ export class App {}
 export class Vault {
   async read(_file: TFile): Promise<string> {
     return '';
+  }
+  getAbstractFileByPath(_path: string): TFile | TFolder | null {
+    return null;
   }
 }
 export class MetadataCache {}
