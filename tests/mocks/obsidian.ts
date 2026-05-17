@@ -22,5 +22,11 @@ export class App {}
 export class Vault {}
 export class MetadataCache {}
 export class FileManager {
-  async processFrontMatter(_file: TFile, _fn: (fm: Record<string, unknown>) => void): Promise<void> {}
+  // Invoke the callback with an empty frontmatter object so tests that read or
+  // write frontmatter fields receive a realistic (mutatable) record rather than
+  // a silent no-op. Tests that need specific initial values can pre-populate
+  // the record via jest.spyOn or by subclassing FileManager.
+  async processFrontMatter(_file: TFile, fn: (fm: Record<string, unknown>) => void): Promise<void> {
+    fn({});
+  }
 }
