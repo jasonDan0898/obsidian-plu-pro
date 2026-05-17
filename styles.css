@@ -74,6 +74,48 @@
   text-decoration: underline;
   color: var(--link-color-hover);
 }
+.plupro-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.plupro-list-title {
+  margin: 0;
+}
+.plupro-refresh-btn {
+  font-size: 0.85em;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.plupro-refresh-btn[disabled] {
+  opacity: 0.5;
+  cursor: wait;
+}
+.plupro-conflict-banner {
+  background-color: var(--background-modifier-error);
+  color: var(--text-on-accent);
+  padding: 8px;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  font-size: 0.85em;
+}
+.plupro-conflict-banner summary {
+  cursor: pointer;
+  margin-top: 4px;
+}
+.plupro-conflict-list {
+  list-style: none;
+  padding: 0;
+  margin: 4px 0 0 0;
+}
+.plupro-conflict-path {
+  font-family: var(--font-monospace);
+  font-size: 0.9em;
+  opacity: 0.9;
+}
 .plupro-empty,
 .plupro-hint {
   color: var(--text-muted);

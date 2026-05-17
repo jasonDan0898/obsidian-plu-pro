@@ -10,6 +10,7 @@ export const VIEW_TYPE_CONTROL_TOWER = 'plupro-control-tower';
 export interface PluProPluginForView extends Plugin {
   getIndex(): ProjectIndexSnapshot;
   openAssignmentModal(target: ChangeEntry): void;
+  refreshIndex(): Promise<void>;
 }
 
 export class ControlTowerView extends ItemView {
@@ -62,7 +63,40 @@ export class ControlTowerView extends ItemView {
   private renderList(snapshot: ProjectIndexSnapshot): void {
     if (!this.listPaneEl) return;
     this.listPaneEl.empty();
-    this.listPaneEl.createEl('h3', { text: '项目', cls: 'plupro-list-title' });
+
+    const header = this.listPaneEl.createDiv({ cls: 'plupro-list-header' });
+    header.createEl('h3', { text: '项目', cls: 'plupro-list-title' });
+    const refreshBtn = header.createEl('button', {
+      cls: 'plupro-refresh-btn',
+      text: '⟳ 刷新',
+      attr: { title: '重扫 _projects/ 与 openspec/changes/,通常自动更新即可' },
+    });
+    refreshBtn.addEventListener('click', async (evt) => {
+      evt.stopPropagation();
+      refreshBtn.setAttr('disabled', 'true');
+      refreshBtn.setText('刷新中…');
+      try {
+        await this.plugin.refreshIndex();
+      } finally {
+        refreshBtn.removeAttribute('disabled');
+        refreshBtn.setText('⟳ 刷新');
+      }
+    });
+
+    if (snapshot.slugConflicts.length > 0) {
+      const banner = this.listPaneEl.createDiv({ cls: 'plupro-conflict-banner' });
+      banner.createSpan({ text: `⚠ ${snapshot.slugConflicts.length} 处 slug 冲突` });
+      const detail = banner.createEl('details');
+      detail.createEl('summary', { text: '点开查看' });
+      const list = detail.createEl('ul', { cls: 'plupro-conflict-list' });
+      for (const cf of snapshot.slugConflicts) {
+        const li = list.createEl('li');
+        li.createSpan({ text: `slug "${cf.slug}":` });
+        for (const p of cf.manifestPaths) {
+          li.createEl('div', { cls: 'plupro-conflict-path', text: `  · ${p}` });
+        }
+      }
+    }
 
     if (snapshot.projects.size === 0 && snapshot.unassigned.length === 0) {
       this.listPaneEl.createDiv({ cls: 'plupro-empty', text: '尚无项目 — 在 _projects/ 下创建 manifest 文件即可' });

@@ -15,6 +15,7 @@ export default class PluProPlugin extends Plugin {
     projects: new Map(),
     unassigned: [],
     orphanRefs: [],
+    slugConflicts: [],
   };
   private refreshTimer: number | null = null;
 

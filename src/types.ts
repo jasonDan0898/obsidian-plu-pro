@@ -67,11 +67,17 @@ export interface OrphanRef {
   declaredProject: ProjectSlug;
 }
 
+export interface SlugConflict {
+  slug: ProjectSlug;
+  manifestPaths: string[];
+}
+
 export interface ProjectIndexSnapshot {
   /** Map is not JSON-serialisable; v2 persistence must convert to Array first. */
   projects: Map<ProjectSlug, ProjectEntry>;
   unassigned: ChangeEntry[];
   orphanRefs: OrphanRef[];
+  slugConflicts: SlugConflict[];
 }
 
 export interface AssignmentCandidate {

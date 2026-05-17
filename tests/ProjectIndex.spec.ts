@@ -91,5 +91,32 @@ describe('ProjectIndex.buildIndex', () => {
     expect(idx.projects.size).toBe(0);
     expect(idx.unassigned).toEqual([]);
     expect(idx.orphanRefs).toEqual([]);
+    expect(idx.slugConflicts).toEqual([]);
+  });
+
+  it('同 slug 多 manifest 记入 slugConflicts,保留先扫描的', () => {
+    const first: ProjectManifest = {
+      slug: 'proj-a',
+      title: '先扫到',
+      status: 'active',
+      manifestPath: '_projects/first.md',
+    };
+    const second: ProjectManifest = {
+      slug: 'proj-a',
+      title: '后扫到',
+      status: 'active',
+      manifestPath: '_projects/second.md',
+    };
+    const idx = buildIndex({ manifests: [first, second], changes: [] });
+
+    expect(idx.slugConflicts).toHaveLength(1);
+    expect(idx.slugConflicts[0].slug).toBe('proj-a');
+    expect(idx.slugConflicts[0].manifestPaths).toEqual([
+      '_projects/first.md',
+      '_projects/second.md',
+    ]);
+    // 先扫到的保留为 active project
+    const entry = idx.projects.get('proj-a')!;
+    expect(entry.manifest.title).toBe('先扫到');
   });
 });
