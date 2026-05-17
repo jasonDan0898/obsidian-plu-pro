@@ -22,10 +22,11 @@ export class App {}
 export class Vault {}
 export class MetadataCache {}
 export class FileManager {
-  // Invoke the callback with an empty frontmatter object so tests that read or
-  // write frontmatter fields receive a realistic (mutatable) record rather than
-  // a silent no-op. Tests that need specific initial values can pre-populate
-  // the record via jest.spyOn or by subclassing FileManager.
+  // Invoke the callback with a fresh empty frontmatter object so tests exercising
+  // processFrontMatter side-effects don't silently skip the callback. Each call
+  // creates a new {} — mutations are not persisted across calls. To inject
+  // specific initial values, override with jest.spyOn:
+  //   jest.spyOn(fm, 'processFrontMatter').mockImplementation(async (_f, fn) => fn({ key: 'val' }));
   async processFrontMatter(_file: TFile, fn: (fm: Record<string, unknown>) => void): Promise<void> {
     fn({});
   }

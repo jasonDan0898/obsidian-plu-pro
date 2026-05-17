@@ -2,8 +2,9 @@ module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'node',
   roots: ['<rootDir>/tests'],
-  // Allow the test suite to pass when no test files exist yet.
-  // Tests are added incrementally in later tasks; failing here would block CI.
+  // TODO(Task 4): Remove this flag after the first spec file is added in Task 4.
+  // Tests are added incrementally; without it, npm test exits 1 on zero files
+  // and blocks the scaffolding stage.
   passWithNoTests: true,
   moduleDirectories: ['node_modules', 'src'],
   moduleNameMapper: {
