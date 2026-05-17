@@ -19,7 +19,11 @@ export class TFolder {
   children: Array<TFile | TFolder> = [];
 }
 export class App {}
-export class Vault {}
+export class Vault {
+  async read(_file: TFile): Promise<string> {
+    return '';
+  }
+}
 export class MetadataCache {}
 export class FileManager {
   // Invoke the callback with a fresh empty frontmatter object so tests exercising
