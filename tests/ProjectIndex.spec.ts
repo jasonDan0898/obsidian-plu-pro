@@ -1,0 +1,95 @@
+import { buildIndex } from '../src/core/ProjectIndex';
+import type { ChangeEntry, ProjectManifest } from '../src/types';
+
+const manifest = (slug: string, scope: string[] = []): ProjectManifest => ({
+  slug,
+  title: slug,
+  status: 'active',
+  scope,
+  manifestPath: `_projects/${slug}.md`,
+});
+
+const change = (
+  slug: string,
+  fm: Record<string, unknown>,
+  done: number,
+  total: number,
+): ChangeEntry => ({
+  slug,
+  proposalPath: `openspec/changes/${slug}/proposal.md`,
+  frontmatter: fm,
+  taskProgress: {
+    totalDone: done,
+    totalCount: total,
+    groups: [{ heading: '(未分组)', done, total }],
+  },
+  blockers: [],
+});
+
+describe('ProjectIndex.buildIndex', () => {
+  it('按 project 字段把 change 挂到 project', () => {
+    const idx = buildIndex({
+      manifests: [manifest('proj-a')],
+      changes: [change('c1', { project: 'proj-a' }, 1, 2)],
+    });
+    expect(idx.projects.size).toBe(1);
+    expect(idx.projects.get('proj-a')!.changes).toHaveLength(1);
+    expect(idx.unassigned).toEqual([]);
+  });
+
+  it('缺 project 字段的 change 进 unassigned', () => {
+    const idx = buildIndex({
+      manifests: [manifest('proj-a')],
+      changes: [change('c1', {}, 0, 3)],
+    });
+    expect(idx.unassigned).toHaveLength(1);
+    expect(idx.unassigned[0].slug).toBe('c1');
+  });
+
+  it('指向不存在 manifest 的 project 记入 orphanRefs', () => {
+    const idx = buildIndex({
+      manifests: [manifest('proj-a')],
+      changes: [change('c1', { project: 'proj-missing' }, 0, 1)],
+    });
+    expect(idx.orphanRefs).toHaveLength(1);
+    expect(idx.orphanRefs[0].declaredProject).toBe('proj-missing');
+  });
+
+  it('AggregateProgress 聚合多 change 进度', () => {
+    const idx = buildIndex({
+      manifests: [manifest('proj-a')],
+      changes: [
+        change('c1', { project: 'proj-a' }, 2, 4),
+        change('c2', { project: 'proj-a' }, 3, 3),
+        change('c3', { project: 'proj-a' }, 0, 2),
+      ],
+    });
+    const entry = idx.projects.get('proj-a')!;
+    expect(entry.progress.totalDone).toBe(5);
+    expect(entry.progress.totalCount).toBe(9);
+    expect(entry.progress.changeCount).toBe(3);
+    expect(entry.progress.changesDone).toBe(1);
+  });
+
+  it('blockers 经 known slugs 解析填充', () => {
+    const idx = buildIndex({
+      manifests: [manifest('proj-a')],
+      changes: [
+        change('c1', { project: 'proj-a', related: ['[[../c2/proposal]]', '[[unknown]]'] }, 0, 1),
+        change('c2', { project: 'proj-a' }, 0, 1),
+      ],
+    });
+    const c1 = idx.projects.get('proj-a')!.changes.find((c) => c.slug === 'c1')!;
+    expect(c1.blockers).toHaveLength(2);
+    const resolvedMap = Object.fromEntries(c1.blockers.map((b) => [b.targetSlug, b.resolved]));
+    expect(resolvedMap.c2).toBe(true);
+    expect(resolvedMap.unknown).toBe(false);
+  });
+
+  it('空输入返回空索引', () => {
+    const idx = buildIndex({ manifests: [], changes: [] });
+    expect(idx.projects.size).toBe(0);
+    expect(idx.unassigned).toEqual([]);
+    expect(idx.orphanRefs).toEqual([]);
+  });
+});
