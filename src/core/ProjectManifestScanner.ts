@@ -1,0 +1,77 @@
+import type { App, TFile, TFolder } from 'obsidian';
+import type { ProjectManifest, ProjectStatus } from '../types';
+import { parseFrontmatterFromText } from './FrontmatterIO';
+
+const VALID_STATUSES: ProjectStatus[] = ['active', 'paused', 'done', 'archived'];
+
+function asString(v: unknown): string | undefined {
+  return typeof v === 'string' ? v : undefined;
+}
+
+function asStringArray(v: unknown): string[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  return v.filter((x): x is string => typeof x === 'string');
+}
+
+export function parseManifestFromText(
+  text: string,
+  manifestPath: string,
+): ProjectManifest | null {
+  const fm = parseFrontmatterFromText(text);
+  if (fm.type !== 'project') {
+    return null;
+  }
+  const slug = asString(fm.slug);
+  const title = asString(fm.title);
+  if (!slug || !title) {
+    return null;
+  }
+  const statusRaw = asString(fm.status);
+  const status: ProjectStatus =
+    statusRaw && VALID_STATUSES.includes(statusRaw as ProjectStatus)
+      ? (statusRaw as ProjectStatus)
+      : 'active';
+
+  return {
+    slug,
+    title,
+    status,
+    owner: asString(fm.owner),
+    created: asString(fm.created),
+    updated: asString(fm.updated),
+    scope: asStringArray(fm.scope),
+    tags: asStringArray(fm.tags),
+    manifestPath,
+  };
+}
+
+export class ProjectManifestScanner {
+  constructor(private readonly app: App, private readonly projectsRoot: string) {}
+
+  async scanAll(): Promise<ProjectManifest[]> {
+    const folder = this.app.vault.getAbstractFileByPath(this.projectsRoot);
+    if (!folder || !this.isFolder(folder)) {
+      return [];
+    }
+    const out: ProjectManifest[] = [];
+    for (const child of (folder as TFolder).children) {
+      if (!this.isFile(child)) continue;
+      const file = child as TFile;
+      if (file.extension !== 'md') continue;
+      const text = await this.app.vault.read(file);
+      const manifest = parseManifestFromText(text, file.path);
+      if (manifest) {
+        out.push(manifest);
+      }
+    }
+    return out;
+  }
+
+  private isFolder(item: unknown): item is TFolder {
+    return !!item && typeof item === 'object' && 'children' in (item as object);
+  }
+
+  private isFile(item: unknown): item is TFile {
+    return !!item && typeof item === 'object' && 'extension' in (item as object);
+  }
+}
