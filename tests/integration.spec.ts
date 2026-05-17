@@ -30,6 +30,7 @@ describe('integration: realistic fixtures', () => {
     const idx = buildIndex({ manifests: [manifest!], changes });
 
     expect(idx.unassigned).toEqual([]);
+    expect(idx.orphanRefs).toEqual([]);
     expect(idx.projects.size).toBe(1);
 
     const entry = idx.projects.get('bottleneck-routing')!;
