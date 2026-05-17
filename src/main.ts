@@ -25,6 +25,10 @@ export default class PluProPlugin extends Plugin {
 
     this.registerView(VIEW_TYPE_CONTROL_TOWER, (leaf) => new ControlTowerView(leaf, this));
 
+    this.addRibbonIcon('kanban-square', 'PluPro 项目控制塔', () => {
+      void this.activateView();
+    });
+
     this.addCommand({
       id: 'open-control-tower',
       name: '打开项目控制塔',
