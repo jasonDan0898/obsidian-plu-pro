@@ -92,14 +92,20 @@ export default class PluProPlugin extends Plugin {
 
   openAssignmentModal(target: ChangeEntry): void {
     const allProjects = Array.from(this.currentIndex.projects.values());
-    new AssignmentModal(this.app, target, allProjects, async (projectSlug) => {
-      const file = this.app.vault.getAbstractFileByPath(target.proposalPath);
-      if (!file || !(file instanceof TFile)) {
-        throw new Error(`无法定位 ${target.proposalPath}`);
-      }
-      await this.frontmatterIO.setField(file, 'project', projectSlug);
-      await this.refreshIndex();
-    }).open();
+    new AssignmentModal(
+      this.app,
+      target,
+      allProjects,
+      async (projectSlug) => {
+        const file = this.app.vault.getAbstractFileByPath(target.proposalPath);
+        if (!file || !(file instanceof TFile)) {
+          throw new Error(`无法定位 ${target.proposalPath}`);
+        }
+        await this.frontmatterIO.setField(file, 'project', projectSlug);
+        await this.refreshIndex();
+      },
+      { enableCapabilityFallback: this.settings.enableCapabilityFallback },
+    ).open();
   }
 
   private registerMetadataCacheListeners(): void {
@@ -114,8 +120,10 @@ export default class PluProPlugin extends Plugin {
         window.clearTimeout(this.refreshTimer);
       }
       this.refreshTimer = window.setTimeout(() => {
-        this.refreshIndex();
         this.refreshTimer = null;
+        void this.refreshIndex().catch((err) => {
+          console.error('[PluPro] refresh failed', err);
+        });
       }, 250);
     };
 

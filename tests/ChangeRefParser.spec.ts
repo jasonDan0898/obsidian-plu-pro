@@ -57,4 +57,9 @@ describe('ChangeRefParser', () => {
     expect(parseChangeRefs([], knownSlugs)).toEqual([]);
     expect(parseChangeRefs(undefined, knownSlugs)).toEqual([]);
   });
+
+  it('父级非 ASCII slug 也被 SLUG_RE 过滤(避免幽灵 blocker)', () => {
+    const refs = parseChangeRefs(['[[../中文路径/proposal]]'], knownSlugs);
+    expect(refs).toHaveLength(0);
+  });
 });

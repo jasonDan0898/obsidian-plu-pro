@@ -18,7 +18,8 @@ function extractSlug(raw: string): string | null {
   const last = segments[segments.length - 1];
 
   if (NON_CHANGE_DOC.has(last) && segments.length >= 2) {
-    return segments[segments.length - 2];
+    const parent = segments[segments.length - 2];
+    return SLUG_RE.test(parent) ? parent : null;
   }
   if (NON_CHANGE_DOC.has(last)) {
     return null;

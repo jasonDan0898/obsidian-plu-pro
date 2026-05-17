@@ -82,4 +82,11 @@ describe('AssignmentSuggester.suggestProjects', () => {
     const candidates = suggestProjects(target, projects);
     expect(candidates).toHaveLength(3);
   });
+
+  it('enableCapabilityFallback=false 时跳过 capability 信号', () => {
+    const target = change('orphan-change', { capability: 'hic-kernel-audit' });
+    const projects = [projectEntry('proj-a', ['hic-kernel-audit'], [])];
+    const candidates = suggestProjects(target, projects, { enableCapabilityFallback: false });
+    expect(candidates).toEqual([]);
+  });
 });

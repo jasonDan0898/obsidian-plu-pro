@@ -10,10 +10,17 @@ const SCORE_RELATED = 3;
 const SCORE_SLUG_TOKEN = 1;
 const MAX_CANDIDATES = 3;
 
+export interface SuggestOptions {
+  /** false 时跳过 capability ∈ scope 这条 +5 信号(对应 PluginSettings.enableCapabilityFallback) */
+  enableCapabilityFallback?: boolean;
+}
+
 export function suggestProjects(
   target: ChangeEntry,
   projects: ProjectEntry[],
+  options: SuggestOptions = {},
 ): AssignmentCandidate[] {
+  const enableCapabilityFallback = options.enableCapabilityFallback ?? true;
   const candidates: AssignmentCandidate[] = [];
 
   for (const project of projects) {
@@ -23,7 +30,7 @@ export function suggestProjects(
     const capability = typeof target.frontmatter.capability === 'string'
       ? target.frontmatter.capability
       : undefined;
-    if (capability && project.manifest.scope?.includes(capability)) {
+    if (enableCapabilityFallback && capability && project.manifest.scope?.includes(capability)) {
       score += SCORE_CAPABILITY;
       reasons.push(`capability ${capability} ∈ project.scope`);
     }

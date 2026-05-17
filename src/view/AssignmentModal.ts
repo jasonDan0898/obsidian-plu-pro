@@ -1,6 +1,6 @@
 import { App, Modal, Notice, Setting } from 'obsidian';
 import type { ChangeEntry, ProjectEntry, AssignmentCandidate } from '../types';
-import { suggestProjects } from '../core/AssignmentSuggester';
+import { suggestProjects, type SuggestOptions } from '../core/AssignmentSuggester';
 
 export class AssignmentModal extends Modal {
   constructor(
@@ -8,6 +8,7 @@ export class AssignmentModal extends Modal {
     private readonly target: ChangeEntry,
     private readonly allProjects: ProjectEntry[],
     private readonly onAssign: (projectSlug: string) => Promise<void>,
+    private readonly suggestOptions: SuggestOptions = {},
   ) {
     super(app);
   }
@@ -17,7 +18,7 @@ export class AssignmentModal extends Modal {
     contentEl.empty();
     contentEl.createEl('h2', { text: `归并 ${this.target.slug}` });
 
-    const candidates = suggestProjects(this.target, this.allProjects);
+    const candidates = suggestProjects(this.target, this.allProjects, this.suggestOptions);
     if (candidates.length === 0) {
       contentEl.createDiv({
         cls: 'plupro-hint',
