@@ -64,6 +64,16 @@
 .plupro-assign-btn {
   margin-left: 8px;
 }
+.plupro-clickable {
+  cursor: pointer;
+  color: var(--link-color);
+  text-decoration: none;
+  font-weight: 500;
+}
+.plupro-clickable:hover {
+  text-decoration: underline;
+  color: var(--link-color-hover);
+}
 .plupro-empty,
 .plupro-hint {
   color: var(--text-muted);

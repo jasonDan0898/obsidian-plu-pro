@@ -1,4 +1,4 @@
-import { ItemView, Plugin, WorkspaceLeaf } from 'obsidian';
+import { ItemView, Plugin, TFile, WorkspaceLeaf } from 'obsidian';
 import type { ChangeEntry, ProjectIndexSnapshot } from '../types';
 
 export const VIEW_TYPE_CONTROL_TOWER = 'plupro-control-tower';
@@ -138,7 +138,8 @@ export class ControlTowerView extends ItemView {
     const changesUl = this.detailPaneEl.createEl('ul', { cls: 'plupro-change-list' });
     for (const c of entry.changes) {
       const li = changesUl.createEl('li', { cls: 'plupro-change-item' });
-      li.createDiv({ cls: 'plupro-change-slug', text: c.slug });
+      const slugEl = li.createDiv({ cls: 'plupro-change-slug plupro-clickable', text: c.slug });
+      this.attachPreviewBehavior(slugEl, c.proposalPath);
       const tp = c.taskProgress;
       const pct = tp.totalCount === 0 ? 0 : Math.round((tp.totalDone / tp.totalCount) * 100);
       li.createDiv({
@@ -172,12 +173,40 @@ export class ControlTowerView extends ItemView {
     const ul = this.detailPaneEl.createEl('ul', { cls: 'plupro-change-list' });
     for (const c of snapshot.unassigned) {
       const li = ul.createEl('li', { cls: 'plupro-change-item' });
-      li.createDiv({ cls: 'plupro-change-slug', text: c.slug });
+      const slugEl = li.createDiv({ cls: 'plupro-change-slug plupro-clickable', text: c.slug });
+      this.attachPreviewBehavior(slugEl, c.proposalPath);
       const assignBtn = li.createEl('button', { cls: 'plupro-assign-btn', text: '归并到项目…' });
-      assignBtn.addEventListener('click', () => {
+      assignBtn.addEventListener('click', (evt) => {
+        evt.stopPropagation();
         this.plugin.openAssignmentModal(c);
       });
     }
+  }
+
+  /**
+   * 给 change slug 元素挂悬停预览(走 Obsidian Page Preview 核心插件)+ 点击在右侧
+   * split pane 打开 proposal.md。让用户在归并前能快速判断 change 的主题归属。
+   */
+  private attachPreviewBehavior(el: HTMLElement, proposalPath: string): void {
+    el.setAttr('title', `悬停预览 / 点击打开:${proposalPath}`);
+    el.addEventListener('mouseover', (evt) => {
+      this.app.workspace.trigger('hover-link', {
+        event: evt,
+        source: 'plupro-control-tower',
+        hoverParent: this,
+        targetEl: el,
+        linktext: proposalPath,
+      });
+    });
+    el.addEventListener('click', async (evt) => {
+      evt.stopPropagation();
+      const file = this.app.vault.getAbstractFileByPath(proposalPath);
+      if (!(file instanceof TFile)) {
+        return;
+      }
+      const leaf = this.app.workspace.getLeaf('split', 'vertical');
+      await leaf.openFile(file);
+    });
   }
 
   private renderProgressBar(parent: HTMLElement, pct: number): void {
