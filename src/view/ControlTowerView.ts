@@ -163,11 +163,11 @@ export class ControlTowerView extends ItemView {
         title.setAttr('data-slug', slug);
         const fm = entry.manifest;
         if (fm.pendingAnalysis) {
-          title.createSpan({ cls: 'plupro-badge plupro-badge-pending', text: ' 🟡 待分析' });
+          title.createSpan({ cls: 'plupro-badge plupro-badge-pending', text: '待分析' });
         } else if (fm.generatedChanges && fm.generatedChanges.length > 0) {
           title.createSpan({
             cls: 'plupro-badge plupro-badge-done',
-            text: ` 🟢 已拆解(${fm.generatedChanges.length})`,
+            text: `✓ ${fm.generatedChanges.length}`,
           });
         }
         const meta = li.createDiv({ cls: 'plupro-project-meta' });
