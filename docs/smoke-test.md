@@ -38,6 +38,22 @@
 - [ ] 检查左侧项目列表 — 「孤儿引用」数应反映(后续可加 badge,v1 仅日志输出)
 - [ ] 打开设置 → 修改 "OpenSpec changes 路径" → 控制塔自动重建索引
 
+## 流程 5:用 Claude 分析项目(v1.1 新增)
+
+- [ ] 5.1 在 Obsidian 打开 `_projects/<某个真实项目>.md`
+- [ ] 5.2 Cmd-P → 输入 "PluPro: 用 Claude 分析此项目" → 命令可见
+- [ ] 5.3 执行命令,看到 Notice "已标记 X 为待分析。在 Claude Code 内运行:/analyze-project X"(8 秒)
+- [ ] 5.4 检查该项目 frontmatter:`pending-analysis: true` 已写入,`last-analyzed` 有 ISO timestamp
+- [ ] 5.5 控制塔左侧项目卡片,该项目 title 旁出现 🟡 待分析 chip
+- [ ] 5.6 在 Claude Code 跑 `/analyze-project <slug>` → Claude 拆解并创建 N 个 change
+- [ ] 5.7 检查 `openspec/changes/<新 slug>/proposal.md` frontmatter 含 `project: <slug>`
+- [ ] 5.8 检查 `_projects/<slug>.md` frontmatter:
+   - `pending-analysis: false`
+   - `last-analyzed` 更新到 Claude 完成时刻
+   - `generated-changes: [...]` 列出新 change slug
+- [ ] 5.9 控制塔 250ms 内自动刷新,徽章切换为 🟢 已拆解(N)
+- [ ] 5.10 项目下的 changes 数量从 0 变为 N,挂在该项目下
+
 ## 已知 v1 限制(非缺陷)
 
 - 不解析 markdown body 内容

@@ -5,7 +5,10 @@ import { parseFrontmatterFromText } from './FrontmatterIO';
 const VALID_STATUSES: ProjectStatus[] = ['active', 'paused', 'done', 'archived'];
 
 function asString(v: unknown): string | undefined {
-  return typeof v === 'string' ? v : undefined;
+  if (typeof v === 'string') return v;
+  // YAML 解析 ISO 时间戳/日期会自动产出 Date 对象,统一序列化回 ISO 字符串。
+  if (v instanceof Date && !isNaN(v.getTime())) return v.toISOString();
+  return undefined;
 }
 
 function asStringArray(v: unknown): string[] | undefined {
@@ -42,6 +45,9 @@ export function parseManifestFromText(
     scope: asStringArray(fm.scope),
     tags: asStringArray(fm.tags),
     manifestPath,
+    pendingAnalysis: typeof fm['pending-analysis'] === 'boolean' ? fm['pending-analysis'] : false,
+    generatedChanges: asStringArray(fm['generated-changes']),
+    lastAnalyzed: asString(fm['last-analyzed']),
   };
 }
 

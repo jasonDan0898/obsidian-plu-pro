@@ -11,6 +11,7 @@ export interface PluProPluginForView extends Plugin {
   getIndex(): ProjectIndexSnapshot;
   openAssignmentModal(target: ChangeEntry): void;
   refreshIndex(): Promise<void>;
+  markProjectForAnalysis(file: TFile): Promise<void>;
 }
 
 export class ControlTowerView extends ItemView {
@@ -111,6 +112,15 @@ export class ControlTowerView extends ItemView {
       }
       const title = li.createDiv({ cls: 'plupro-project-title', text: entry.manifest.title });
       title.setAttr('data-slug', slug);
+      const fm = entry.manifest;
+      if (fm.pendingAnalysis) {
+        title.createSpan({ cls: 'plupro-badge plupro-badge-pending', text: ' 🟡 待分析' });
+      } else if (fm.generatedChanges && fm.generatedChanges.length > 0) {
+        title.createSpan({
+          cls: 'plupro-badge plupro-badge-done',
+          text: ` 🟢 已拆解(${fm.generatedChanges.length})`,
+        });
+      }
       const meta = li.createDiv({ cls: 'plupro-project-meta' });
       const pct = entry.progress.totalCount === 0
         ? 0
@@ -156,6 +166,17 @@ export class ControlTowerView extends ItemView {
       return;
     }
     this.detailPaneEl.createEl('h2', { text: entry.manifest.title });
+    const actions = this.detailPaneEl.createDiv({ cls: 'plupro-detail-actions' });
+    const analyzeBtn = actions.createEl('button', {
+      cls: 'plupro-analyze-btn',
+      text: '🤖 用 Claude 分析此项目',
+    });
+    analyzeBtn.addEventListener('click', () => {
+      const file = this.app.vault.getAbstractFileByPath(entry.manifest.manifestPath);
+      if (file instanceof TFile) {
+        void this.plugin.markProjectForAnalysis(file);
+      }
+    });
     const meta = this.detailPaneEl.createDiv({ cls: 'plupro-detail-meta' });
     meta.createSpan({ text: `状态:${entry.manifest.status}` });
     if (entry.manifest.owner) {

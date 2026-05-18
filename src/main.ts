@@ -42,6 +42,21 @@ export default class PluProPlugin extends Plugin {
       callback: () => this.refreshIndex(),
     });
 
+    this.addCommand({
+      id: 'mark-project-for-analysis',
+      name: '用 Claude 分析此项目',
+      checkCallback: (checking: boolean) => {
+        const file = this.app.workspace.getActiveFile();
+        if (!file || !this.isProjectManifest(file)) {
+          return false;
+        }
+        if (!checking) {
+          void this.markProjectForAnalysis(file);
+        }
+        return true;
+      },
+    });
+
     this.addSettingTab(new PluProSettingTab(this.app, this));
 
     this.app.workspace.onLayoutReady(async () => {
@@ -111,6 +126,46 @@ export default class PluProPlugin extends Plugin {
       },
       { enableCapabilityFallback: this.settings.enableCapabilityFallback },
     ).open();
+  }
+
+  /**
+   * 检查文件是否为 _projects/ 下的有效项目 manifest 文件。
+   * - 路径必须在 settings.projectsPath 下
+   * - 必须是 .md
+   * - 排除 _ 前缀的模板/工具文件(如 _template.md)
+   */
+  private isProjectManifest(file: TFile): boolean {
+    return (
+      file.path.startsWith(this.settings.projectsPath + '/') &&
+      file.extension === 'md' &&
+      !file.basename.startsWith('_')
+    );
+  }
+
+  /**
+   * 标记项目为"待分析",写回 frontmatter pending-analysis: true + last-analyzed,
+   * 弹 Notice 提示用户在 Claude Code 跑 /analyze-project <slug>。
+   */
+  async markProjectForAnalysis(file: TFile): Promise<void> {
+    const slug = await this.frontmatterIO.readField<string>(file, 'slug');
+    const type = await this.frontmatterIO.readField<string>(file, 'type');
+
+    if (type !== 'project' || !slug) {
+      new Notice('当前文件不是有效项目 manifest(缺 type=project 或 slug)');
+      return;
+    }
+
+    await this.app.fileManager.processFrontMatter(file, (fm) => {
+      fm['pending-analysis'] = true;
+      fm['last-analyzed'] = new Date().toISOString();
+    });
+
+    new Notice(
+      `已标记 ${slug} 为待分析。\n在 Claude Code 内运行:/analyze-project ${slug}`,
+      8000,
+    );
+
+    await this.refreshIndex();
   }
 
   private registerMetadataCacheListeners(): void {

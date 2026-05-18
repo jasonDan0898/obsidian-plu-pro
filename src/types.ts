@@ -12,6 +12,9 @@ export interface ProjectManifest {
   scope?: string[];
   tags?: string[];
   manifestPath: string;
+  pendingAnalysis?: boolean;
+  generatedChanges?: string[];
+  lastAnalyzed?: string;
 }
 
 export interface ChangeFrontmatter {
