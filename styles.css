@@ -159,3 +159,35 @@
   margin-top: 12px;
   border-top: 1px solid var(--background-modifier-border);
 }
+.plupro-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+.plupro-filter-chip {
+  padding: 3px 10px;
+  border-radius: 12px;
+  cursor: pointer;
+  font-size: 0.8em;
+  background-color: var(--background-secondary);
+  color: var(--text-normal);
+  border: 1px solid var(--background-modifier-border);
+}
+.plupro-filter-chip:hover {
+  background-color: var(--background-modifier-hover);
+}
+.plupro-filter-chip.is-active {
+  background-color: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border-color: var(--interactive-accent);
+}
+.plupro-system-divider {
+  font-size: 0.75em;
+  color: var(--text-muted);
+  font-weight: 500;
+  padding: 8px 0 4px 0;
+  margin: 8px 0 4px 0;
+  list-style: none;
+  text-align: center;
+}

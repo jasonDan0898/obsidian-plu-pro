@@ -92,4 +92,55 @@ status: active
     expect(m.generatedChanges).toBeUndefined();
     expect(m.lastAnalyzed).toBeUndefined();
   });
+
+  it('提取 system: HIC 字段', () => {
+    const text = `---
+type: project
+slug: demo-proj
+title: Demo
+status: active
+system: HIC
+---
+`;
+    const m = parseManifestFromText(text, '_projects/demo-proj.md')!;
+    expect(m.system).toBe('HIC');
+  });
+
+  it('提取 system: EVS 字段', () => {
+    const text = `---
+type: project
+slug: demo-proj
+title: Demo
+status: active
+system: EVS
+---
+`;
+    const m = parseManifestFromText(text, '_projects/demo-proj.md')!;
+    expect(m.system).toBe('EVS');
+  });
+
+  it('非法 system 值回退为 undefined', () => {
+    const text = `---
+type: project
+slug: demo-proj
+title: Demo
+status: active
+system: legacy
+---
+`;
+    const m = parseManifestFromText(text, '_projects/demo-proj.md')!;
+    expect(m.system).toBeUndefined();
+  });
+
+  it('缺 system 字段为 undefined', () => {
+    const text = `---
+type: project
+slug: demo-proj
+title: Demo
+status: active
+---
+`;
+    const m = parseManifestFromText(text, '_projects/demo-proj.md')!;
+    expect(m.system).toBeUndefined();
+  });
 });

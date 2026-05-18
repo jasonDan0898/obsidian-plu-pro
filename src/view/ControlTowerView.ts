@@ -1,5 +1,5 @@
 import { ItemView, Plugin, TFile, WorkspaceLeaf } from 'obsidian';
-import type { ChangeEntry, ProjectIndexSnapshot } from '../types';
+import type { ChangeEntry, ProjectEntry, ProjectIndexSnapshot, SystemFilter } from '../types';
 
 export const VIEW_TYPE_CONTROL_TOWER = 'plupro-control-tower';
 
@@ -18,6 +18,7 @@ export class ControlTowerView extends ItemView {
   private listPaneEl: HTMLElement | null = null;
   private detailPaneEl: HTMLElement | null = null;
   private selectedProjectSlug: string | null = null;
+  private systemFilter: SystemFilter = 'all';
 
   constructor(leaf: WorkspaceLeaf, private readonly plugin: PluProPluginForView) {
     super(leaf);
@@ -84,6 +85,27 @@ export class ControlTowerView extends ItemView {
       }
     });
 
+    // === v1.3 新增:segmented control 系统筛选 ===
+    const counts = this.countBySystem(snapshot);
+    const filterBar = this.listPaneEl.createDiv({ cls: 'plupro-filter-bar' });
+    const filters: Array<{ key: SystemFilter; label: string; icon: string }> = [
+      { key: 'all',        label: '全部',     icon: '' },
+      { key: 'HIC',        label: 'HIC',     icon: '🟢' },
+      { key: 'EVS',        label: 'EVS',     icon: '🟠' },
+      { key: 'unassigned', label: '未分类',  icon: '⚪' },
+    ];
+    for (const f of filters) {
+      const chip = filterBar.createEl('button', {
+        cls: 'plupro-filter-chip' + (this.systemFilter === f.key ? ' is-active' : ''),
+        text: `${f.icon} ${f.label} (${counts[f.key]})`.trim(),
+      });
+      chip.addEventListener('click', (evt) => {
+        evt.stopPropagation();
+        this.systemFilter = f.key;
+        this.renderAll(this.plugin.getIndex());
+      });
+    }
+
     if (snapshot.slugConflicts.length > 0) {
       const banner = this.listPaneEl.createDiv({ cls: 'plupro-conflict-banner' });
       banner.createSpan({ text: `⚠ ${snapshot.slugConflicts.length} 处 slug 冲突` });
@@ -104,35 +126,63 @@ export class ControlTowerView extends ItemView {
       return;
     }
 
+    const groups = this.groupProjectsBySystem(snapshot);
+    if (groups.length === 0) {
+      this.listPaneEl.createDiv({
+        cls: 'plupro-empty',
+        text: `${this.systemFilter} 系统下没有项目`,
+      });
+    }
+
     const ul = this.listPaneEl.createEl('ul', { cls: 'plupro-project-list' });
-    for (const [slug, entry] of snapshot.projects) {
-      const li = ul.createEl('li', { cls: 'plupro-project-item' });
-      if (slug === this.selectedProjectSlug) {
-        li.addClass('is-selected');
-      }
-      const title = li.createDiv({ cls: 'plupro-project-title', text: entry.manifest.title });
-      title.setAttr('data-slug', slug);
-      const fm = entry.manifest;
-      if (fm.pendingAnalysis) {
-        title.createSpan({ cls: 'plupro-badge plupro-badge-pending', text: ' 🟡 待分析' });
-      } else if (fm.generatedChanges && fm.generatedChanges.length > 0) {
-        title.createSpan({
-          cls: 'plupro-badge plupro-badge-done',
-          text: ` 🟢 已拆解(${fm.generatedChanges.length})`,
+
+    const systemLabels: Record<SystemFilter, { icon: string; text: string }> = {
+      all:        { icon: '',    text: '' },
+      HIC:        { icon: '🟢', text: 'HIC 系统' },
+      EVS:        { icon: '🟠', text: 'EVS 系统' },
+      unassigned: { icon: '⚪', text: '未分类' },
+    };
+
+    for (const group of groups) {
+      // 只在「全部」视图下渲染 divider(单组视图无必要)
+      if (this.systemFilter === 'all') {
+        const label = systemLabels[group.system];
+        ul.createEl('li', {
+          cls: 'plupro-system-divider',
+          text: `━━━ ${label.icon} ${label.text}(${group.entries.length})━━━`,
         });
       }
-      const meta = li.createDiv({ cls: 'plupro-project-meta' });
-      const pct = entry.progress.totalCount === 0
-        ? 0
-        : Math.round((entry.progress.totalDone / entry.progress.totalCount) * 100);
-      meta.setText(
-        `${entry.progress.changesDone}/${entry.progress.changeCount} change · ${entry.progress.totalDone}/${entry.progress.totalCount} task · ${pct}%`,
-      );
-      this.renderProgressBar(li, pct);
-      li.addEventListener('click', () => {
-        this.selectedProjectSlug = slug;
-        this.renderAll(this.plugin.getIndex());
-      });
+
+      for (const entry of group.entries) {
+        const slug = entry.manifest.slug;
+        const li = ul.createEl('li', { cls: 'plupro-project-item' });
+        if (slug === this.selectedProjectSlug) {
+          li.addClass('is-selected');
+        }
+        const title = li.createDiv({ cls: 'plupro-project-title', text: entry.manifest.title });
+        title.setAttr('data-slug', slug);
+        const fm = entry.manifest;
+        if (fm.pendingAnalysis) {
+          title.createSpan({ cls: 'plupro-badge plupro-badge-pending', text: ' 🟡 待分析' });
+        } else if (fm.generatedChanges && fm.generatedChanges.length > 0) {
+          title.createSpan({
+            cls: 'plupro-badge plupro-badge-done',
+            text: ` 🟢 已拆解(${fm.generatedChanges.length})`,
+          });
+        }
+        const meta = li.createDiv({ cls: 'plupro-project-meta' });
+        const pct = entry.progress.totalCount === 0
+          ? 0
+          : Math.round((entry.progress.totalDone / entry.progress.totalCount) * 100);
+        meta.setText(
+          `${entry.progress.changesDone}/${entry.progress.changeCount} change · ${entry.progress.totalDone}/${entry.progress.totalCount} task · ${pct}%`,
+        );
+        this.renderProgressBar(li, pct);
+        li.addEventListener('click', () => {
+          this.selectedProjectSlug = slug;
+          this.renderAll(this.plugin.getIndex());
+        });
+      }
     }
 
     const unassignedLi = ul.createEl('li', { cls: 'plupro-unassigned-item' });
@@ -262,6 +312,44 @@ export class ControlTowerView extends ItemView {
       const leaf = this.app.workspace.getLeaf('split', 'vertical');
       await leaf.openFile(file);
     });
+  }
+
+  /**
+   * 按 system 字段聚合 4 类计数,供 segmented control 显示。
+   */
+  private countBySystem(snapshot: ProjectIndexSnapshot): Record<SystemFilter, number> {
+    const counts: Record<SystemFilter, number> = { all: 0, HIC: 0, EVS: 0, unassigned: 0 };
+    for (const entry of snapshot.projects.values()) {
+      counts.all += 1;
+      const key = (entry.manifest.system ?? 'unassigned') as SystemFilter;
+      counts[key] += 1;
+    }
+    return counts;
+  }
+
+  /**
+   * 按 systemFilter 过滤项目,分组到 HIC / EVS / unassigned 三个桶,桶内按 title
+   * 中文字典序排序,空桶被过滤掉。组间顺序固定 HIC → EVS → unassigned。
+   */
+  private groupProjectsBySystem(
+    snapshot: ProjectIndexSnapshot,
+  ): Array<{ system: SystemFilter; entries: ProjectEntry[] }> {
+    const buckets = new Map<SystemFilter, ProjectEntry[]>();
+    for (const entry of snapshot.projects.values()) {
+      const key = (entry.manifest.system ?? 'unassigned') as SystemFilter;
+      if (this.systemFilter !== 'all' && this.systemFilter !== key) continue;
+      const arr = buckets.get(key) ?? [];
+      arr.push(entry);
+      buckets.set(key, arr);
+    }
+    const collator = new Intl.Collator('zh-CN');
+    for (const arr of buckets.values()) {
+      arr.sort((a, b) => collator.compare(a.manifest.title, b.manifest.title));
+    }
+    const order: SystemFilter[] = ['HIC', 'EVS', 'unassigned'];
+    return order
+      .map((system) => ({ system, entries: buckets.get(system) ?? [] }))
+      .filter((g) => g.entries.length > 0);
   }
 
   private renderProgressBar(parent: HTMLElement, pct: number): void {

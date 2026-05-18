@@ -1,8 +1,9 @@
 import type { App, TFile, TFolder } from 'obsidian';
-import type { ProjectManifest, ProjectStatus } from '../types';
+import type { ProjectManifest, ProjectStatus, ProjectSystem } from '../types';
 import { parseFrontmatterFromText } from './FrontmatterIO';
 
 const VALID_STATUSES: ProjectStatus[] = ['active', 'paused', 'done', 'archived'];
+const VALID_SYSTEMS: ProjectSystem[] = ['HIC', 'EVS'];
 
 function asString(v: unknown): string | undefined {
   if (typeof v === 'string') return v;
@@ -48,6 +49,12 @@ export function parseManifestFromText(
     pendingAnalysis: typeof fm['pending-analysis'] === 'boolean' ? fm['pending-analysis'] : false,
     generatedChanges: asStringArray(fm['generated-changes']),
     lastAnalyzed: asString(fm['last-analyzed']),
+    system: (() => {
+      const raw = asString(fm.system);
+      return raw && VALID_SYSTEMS.includes(raw as ProjectSystem)
+        ? (raw as ProjectSystem)
+        : undefined;
+    })(),
   };
 }
 

@@ -2,6 +2,10 @@ export type ProjectSlug = string;
 
 export type ProjectStatus = 'active' | 'paused' | 'done' | 'archived';
 
+export type ProjectSystem = 'HIC' | 'EVS';
+
+export type SystemFilter = 'all' | 'HIC' | 'EVS' | 'unassigned';
+
 export interface ProjectManifest {
   slug: ProjectSlug;
   title: string;
@@ -15,6 +19,7 @@ export interface ProjectManifest {
   pendingAnalysis?: boolean;
   generatedChanges?: string[];
   lastAnalyzed?: string;
+  system?: ProjectSystem;
 }
 
 export interface ChangeFrontmatter {
