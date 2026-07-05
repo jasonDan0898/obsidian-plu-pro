@@ -1,5 +1,17 @@
-import { ItemView, Plugin, TFile, WorkspaceLeaf } from 'obsidian';
-import type { ChangeEntry, ProjectEntry, ProjectIndexSnapshot, SystemFilter } from '../types';
+import { ItemView, Notice, Plugin, TFile, WorkspaceLeaf } from 'obsidian';
+import type {
+  AIAssignment,
+  ChangeEntry,
+  ContextPackage,
+  HealthIssue,
+  LongTaskThread,
+  ProjectEntry,
+  ProjectIndexSnapshot,
+  SystemFilter,
+} from '../types';
+import type { AssignmentScanSummary } from '../core/AssignmentScanner';
+import type { ManualAssignmentRun } from '../core/AssignmentRunner';
+import { createAssignmentBoardViewModel } from './AssignmentBoardViewModel';
 
 export const VIEW_TYPE_CONTROL_TOWER = 'plupro-control-tower';
 
@@ -9,9 +21,23 @@ export const VIEW_TYPE_CONTROL_TOWER = 'plupro-control-tower';
  */
 export interface PluProPluginForView extends Plugin {
   getIndex(): ProjectIndexSnapshot;
+  getAIAssignments(): AIAssignment[];
   openAssignmentModal(target: ChangeEntry): void;
   refreshIndex(): Promise<void>;
   markProjectForAnalysis(file: TFile): Promise<void>;
+  createAIAssignmentForChange(change: ChangeEntry): Promise<AIAssignment>;
+  prepareAIAssignmentRun(assignmentId: string): Promise<ManualAssignmentRun | null>;
+  scanAIAssignmentResults(): Promise<AssignmentScanSummary>;
+  createContextPackage(selection: { projectSlug?: string; changeSlug?: string }): ContextPackage;
+  createReviewForSource(input: {
+    sourcePath: string;
+    body: string;
+    excerpt?: string;
+    projectSlug?: string;
+    changeSlug?: string;
+  }): Promise<unknown>;
+  exportLocalReviewSurface(selection: { projectSlug?: string; changeSlug?: string }): Promise<string>;
+  saveScenarioSimulationEvidence(): Promise<string>;
 }
 
 export class ControlTowerView extends ItemView {
@@ -201,7 +227,7 @@ export class ControlTowerView extends ItemView {
     this.detailPaneEl.empty();
 
     if (!this.selectedProjectSlug) {
-      this.detailPaneEl.createDiv({ cls: 'plupro-hint', text: '选择左侧项目查看详情' });
+      this.renderHomeDetail(snapshot);
       return;
     }
 
@@ -216,16 +242,33 @@ export class ControlTowerView extends ItemView {
       return;
     }
     this.detailPaneEl.createEl('h2', { text: entry.manifest.title });
+    this.renderProjectBadges(this.detailPaneEl, entry);
     const actions = this.detailPaneEl.createDiv({ cls: 'plupro-detail-actions' });
     const analyzeBtn = actions.createEl('button', {
       cls: 'plupro-analyze-btn',
-      text: '🤖 用 Claude 分析此项目',
+      text: '生成分析预览',
     });
     analyzeBtn.addEventListener('click', () => {
       const file = this.app.vault.getAbstractFileByPath(entry.manifest.manifestPath);
       if (file instanceof TFile) {
         void this.plugin.markProjectForAnalysis(file);
       }
+    });
+    const contextBtn = actions.createEl('button', {
+      cls: 'plupro-secondary-btn',
+      text: '生成上下文包',
+    });
+    contextBtn.addEventListener('click', () => {
+      this.renderContextPackage(entry.manifest.slug);
+    });
+    const exportBtn = actions.createEl('button', {
+      cls: 'plupro-secondary-btn',
+      text: '本地导出',
+    });
+    exportBtn.addEventListener('click', async () => {
+      const path = await this.plugin.exportLocalReviewSurface({ projectSlug: entry.manifest.slug });
+      new Notice(`已导出本地审阅 HTML:${path}`, 7000);
+      void this.plugin.refreshIndex();
     });
     const meta = this.detailPaneEl.createDiv({ cls: 'plupro-detail-meta' });
     meta.createSpan({ text: `状态:${entry.manifest.status}` });
@@ -235,6 +278,17 @@ export class ControlTowerView extends ItemView {
     if (entry.manifest.scope && entry.manifest.scope.length > 0) {
       meta.createSpan({ text: ` · 能力域:${entry.manifest.scope.join(', ')}` });
     }
+    if (entry.manifest.vision) {
+      this.detailPaneEl.createDiv({ cls: 'plupro-vision', text: entry.manifest.vision });
+    }
+    if (entry.nextAction) {
+      this.detailPaneEl.createDiv({ cls: 'plupro-next-action', text: `下一步:${entry.nextAction}` });
+    }
+    this.renderAssignmentBoard(this.detailPaneEl, new Set(entry.changes.map((change) => change.slug)));
+    this.renderProjectHealthPanel(this.detailPaneEl, snapshot, entry.manifest.slug);
+    this.renderLongTasksPanel(this.detailPaneEl, snapshot.longTasks.filter((task) => task.projectSlug === entry.manifest.slug));
+    this.renderRelationshipPanel(this.detailPaneEl, entry);
+    this.renderReviewPanel(this.detailPaneEl, entry);
     this.detailPaneEl.createEl('h3', { text: 'Change 列表' });
     if (entry.changes.length === 0) {
       this.detailPaneEl.createDiv({ cls: 'plupro-empty', text: '该项目下尚未挂入任何 change' });
@@ -245,6 +299,29 @@ export class ControlTowerView extends ItemView {
       const li = changesUl.createEl('li', { cls: 'plupro-change-item' });
       const slugEl = li.createDiv({ cls: 'plupro-change-slug plupro-clickable', text: c.slug });
       this.attachPreviewBehavior(slugEl, c.proposalPath);
+      const changeActions = li.createDiv({ cls: 'plupro-change-actions' });
+      const contextBtn = changeActions.createEl('button', { cls: 'plupro-small-btn', text: '上下文包' });
+      contextBtn.addEventListener('click', (evt) => {
+        evt.stopPropagation();
+        this.renderContextPackage(entry.manifest.slug, c.slug);
+      });
+      const validateBtn = changeActions.createEl('button', { cls: 'plupro-small-btn', text: 'validate' });
+      validateBtn.addEventListener('click', (evt) => {
+        evt.stopPropagation();
+        this.renderValidateCommand(c.slug);
+      });
+      const aiBtn = changeActions.createEl('button', { cls: 'plupro-small-btn', text: 'AI 任务' });
+      aiBtn.addEventListener('click', async (evt) => {
+        evt.stopPropagation();
+        aiBtn.setAttr('disabled', 'true');
+        try {
+          const assignment = await this.plugin.createAIAssignmentForChange(c);
+          new Notice(`已生成 AI 任务:${assignment.id}`);
+          this.renderAll(this.plugin.getIndex());
+        } finally {
+          aiBtn.removeAttribute('disabled');
+        }
+      });
       const tp = c.taskProgress;
       const pct = tp.totalCount === 0 ? 0 : Math.round((tp.totalDone / tp.totalCount) * 100);
       li.createDiv({
@@ -266,6 +343,306 @@ export class ControlTowerView extends ItemView {
         }
       }
     }
+  }
+
+  private renderHomeDetail(snapshot: ProjectIndexSnapshot): void {
+    if (!this.detailPaneEl) return;
+    this.detailPaneEl.createEl('h2', { text: '每日控制塔' });
+    this.renderOverviewMetrics(this.detailPaneEl, snapshot);
+    const actions = this.detailPaneEl.createDiv({ cls: 'plupro-detail-actions' });
+    const saveScenarioBtn = actions.createEl('button', {
+      cls: 'plupro-secondary-btn',
+      text: '保存场景模拟证据',
+    });
+    saveScenarioBtn.addEventListener('click', async () => {
+      const path = await this.plugin.saveScenarioSimulationEvidence();
+      new Notice(`已保存场景模拟:${path}`, 7000);
+      void this.plugin.refreshIndex();
+    });
+    this.renderAssignmentBoard(this.detailPaneEl);
+    this.renderHealthPanel(this.detailPaneEl, snapshot.healthIssues, 12);
+    this.renderLongTasksPanel(this.detailPaneEl, snapshot.longTasks);
+    this.renderScenarioPanel(this.detailPaneEl, snapshot);
+  }
+
+  private renderOverviewMetrics(parent: HTMLElement, snapshot: ProjectIndexSnapshot): void {
+    const metrics = [
+      ['项目', snapshot.overview.projectCount],
+      ['Active changes', snapshot.overview.activeChangeCount],
+      ['任务', `${snapshot.overview.taskDone}/${snapshot.overview.taskTotal}`],
+      ['阻塞', `${snapshot.overview.unresolvedBlockerCount}/${snapshot.overview.blockerCount}`],
+      ['待分析', snapshot.overview.pendingAnalysisCount],
+      ['Archive 候选', snapshot.overview.archiveCandidateCount],
+      ['健康警告', snapshot.overview.metadataWarningCount],
+      ['长任务', snapshot.overview.longTaskCount],
+    ];
+    const grid = parent.createDiv({ cls: 'plupro-metric-grid' });
+    for (const [label, value] of metrics) {
+      const cell = grid.createDiv({ cls: 'plupro-metric-cell' });
+      cell.createDiv({ cls: 'plupro-metric-value', text: String(value) });
+      cell.createDiv({ cls: 'plupro-metric-label', text: String(label) });
+    }
+  }
+
+  private renderProjectBadges(parent: HTMLElement, entry: ProjectEntry): void {
+    const badges = parent.createDiv({ cls: 'plupro-inline-badges' });
+    badges.createSpan({ cls: 'plupro-badge', text: entry.manifest.phase ?? 'phase:未填' });
+    if (entry.manifest.pendingAnalysis) {
+      badges.createSpan({ cls: 'plupro-badge plupro-badge-pending', text: 'pending-analysis' });
+    }
+    if (entry.generatedChanges.length > 0) {
+      badges.createSpan({ cls: 'plupro-badge plupro-badge-done', text: `generated:${entry.generatedChanges.length}` });
+    }
+    if (entry.reverseLinkedChanges.length > 0) {
+      badges.createSpan({ cls: 'plupro-badge', text: `linked:${entry.reverseLinkedChanges.length}` });
+    }
+  }
+
+  private renderProjectHealthPanel(
+    parent: HTMLElement,
+    snapshot: ProjectIndexSnapshot,
+    projectSlug: string,
+  ): void {
+    const issues = snapshot.healthIssues.filter(
+      (issue) =>
+        issue.projectSlug === projectSlug ||
+        entryHasIssue(snapshot.projects.get(projectSlug), issue),
+    );
+    this.renderHealthPanel(parent, issues, 8);
+  }
+
+  private renderHealthPanel(parent: HTMLElement, issues: HealthIssue[], limit: number): void {
+    parent.createEl('h3', { text: 'OpenSpec 健康' });
+    if (issues.length === 0) {
+      parent.createDiv({ cls: 'plupro-empty', text: '当前范围未发现健康问题' });
+      return;
+    }
+    const list = parent.createEl('ul', { cls: 'plupro-health-list' });
+    for (const issue of issues.slice(0, limit)) {
+      const li = list.createEl('li', { cls: `plupro-health-item is-${issue.severity}` });
+      li.createDiv({ cls: 'plupro-health-title', text: issue.title });
+      li.createDiv({ cls: 'plupro-health-message', text: issue.message });
+      if (issue.action) {
+        li.createDiv({ cls: 'plupro-health-action', text: issue.action });
+      }
+      if (issue.sourcePath) {
+        const pathEl = li.createDiv({ cls: 'plupro-path plupro-clickable', text: issue.sourcePath });
+        this.attachPreviewBehavior(pathEl, issue.sourcePath);
+      }
+    }
+    if (issues.length > limit) {
+      parent.createDiv({ cls: 'plupro-muted', text: `另有 ${issues.length - limit} 条健康信号未展开` });
+    }
+  }
+
+  private renderLongTasksPanel(parent: HTMLElement, tasks: LongTaskThread[]): void {
+    parent.createEl('h3', { text: '长任务看板' });
+    if (tasks.length === 0) {
+      parent.createDiv({ cls: 'plupro-empty', text: '当前范围没有需要单独跟踪的长任务线程' });
+      return;
+    }
+    const list = parent.createEl('ul', { cls: 'plupro-long-task-list' });
+    for (const task of tasks.slice(0, 10)) {
+      const li = list.createEl('li', { cls: `plupro-long-task is-${task.status}` });
+      li.createDiv({ cls: 'plupro-long-task-title', text: task.title });
+      li.createDiv({ cls: 'plupro-long-task-meta', text: `${task.stage} · ${task.status}` });
+      li.createDiv({ cls: 'plupro-next-action', text: `下一步:${task.nextAction}` });
+      if (task.blockers.length > 0) {
+        li.createDiv({ cls: 'plupro-health-action', text: `阻塞:${task.blockers.join(', ')}` });
+      }
+      const details = li.createEl('details');
+      details.createEl('summary', { text: 'resume packet' });
+      details.createEl('pre', { cls: 'plupro-pre', text: task.resumePacket });
+    }
+  }
+
+  private renderScenarioPanel(parent: HTMLElement, snapshot: ProjectIndexSnapshot): void {
+    parent.createEl('h3', { text: '30 场景模拟' });
+    const table = parent.createEl('table', { cls: 'plupro-table' });
+    const head = table.createEl('thead').createEl('tr');
+    ['场景', '状态', '信号', '动作'].forEach((label) => head.createEl('th', { text: label }));
+    const body = table.createEl('tbody');
+    for (const result of snapshot.scenarioResults) {
+      const tr = body.createEl('tr', { cls: `plupro-scenario is-${result.status}` });
+      tr.createEl('td', { text: `${result.scenarioId} ${result.title}` });
+      tr.createEl('td', { text: result.status });
+      tr.createEl('td', { text: result.signal });
+      tr.createEl('td', { text: result.action });
+    }
+  }
+
+  private renderAssignmentBoard(parent: HTMLElement, targetRefs?: Set<string>): void {
+    const assignments = targetRefs
+      ? this.plugin.getAIAssignments().filter((assignment) => targetRefs.has(assignment.targetRef))
+      : this.plugin.getAIAssignments();
+    const model = createAssignmentBoardViewModel(assignments);
+    parent.createEl('h3', { text: 'AI 协作台' });
+    const panel = parent.createDiv({ cls: 'plupro-ai-board' });
+    const toolbar = panel.createDiv({ cls: 'plupro-detail-actions' });
+    toolbar.createDiv({
+      cls: 'plupro-muted',
+      text: `任务 ${model.total} · draft ${model.byStatus.draft} · running ${model.byStatus.running} · returned ${model.byStatus.returned}`,
+    });
+    const scanBtn = toolbar.createEl('button', { cls: 'plupro-secondary-btn', text: '扫描结果' });
+    scanBtn.addEventListener('click', async () => {
+      scanBtn.setAttr('disabled', 'true');
+      try {
+        const summary = await this.plugin.scanAIAssignmentResults();
+        new Notice(`已扫描 ${summary.scanned.length} 个 AI 结果`);
+      } finally {
+        scanBtn.removeAttribute('disabled');
+      }
+    });
+
+    if (model.rows.length === 0) {
+      panel.createDiv({ cls: 'plupro-empty', text: '当前范围没有 AI 任务' });
+      return;
+    }
+
+    const list = panel.createEl('ul', { cls: 'plupro-ai-assignment-list' });
+    for (const row of model.rows) {
+      const li = list.createEl('li', { cls: `plupro-ai-assignment is-${row.status}` });
+      const header = li.createDiv({ cls: 'plupro-ai-assignment-header' });
+      header.createSpan({ cls: 'plupro-health-title', text: `${row.targetRef} · ${row.status}` });
+      header.createSpan({ cls: 'plupro-muted', text: row.id });
+      li.createDiv({ cls: 'plupro-health-message', text: row.taskSummary || row.title });
+      if (row.workspaceRisk.includes('dirty')) {
+        li.createDiv({ cls: 'plupro-health-action', text: row.workspaceRisk });
+      }
+      li.createEl('pre', { cls: 'plupro-pre', text: row.command });
+      li.createDiv({ cls: 'plupro-path', text: row.resultPath });
+      const rowActions = li.createDiv({ cls: 'plupro-detail-actions' });
+      const runBtn = rowActions.createEl('button', {
+        cls: 'plupro-small-btn',
+        text: '生成命令',
+        attr: row.canRunManually ? {} : { disabled: 'true' },
+      });
+      runBtn.addEventListener('click', async () => {
+        const plan = await this.plugin.prepareAIAssignmentRun(row.id);
+        if (!plan) {
+          new Notice(`未找到 AI 任务:${row.id}`);
+          return;
+        }
+        this.renderManualRunOutput(li, plan);
+      });
+    }
+  }
+
+  private renderManualRunOutput(parent: HTMLElement, plan: ManualAssignmentRun): void {
+    const existing = parent.querySelector('.plupro-assignment-run-output');
+    existing?.remove();
+    const output = parent.createDiv({ cls: 'plupro-assignment-run-output' });
+    output.createEl('pre', { cls: 'plupro-pre', text: `${plan.command}\n\n${plan.instructions}` });
+  }
+
+  private renderRelationshipPanel(parent: HTMLElement, entry: ProjectEntry): void {
+    parent.createEl('h3', { text: '关系表' });
+    const table = parent.createEl('table', { cls: 'plupro-table' });
+    const head = table.createEl('thead').createEl('tr');
+    ['Change', 'Design', 'Tasks', 'Spec delta', 'Evidence'].forEach((label) => head.createEl('th', { text: label }));
+    const body = table.createEl('tbody');
+    for (const change of entry.changes) {
+      const tr = body.createEl('tr');
+      tr.createEl('td', { text: change.slug });
+      tr.createEl('td', { text: change.designPath ? 'yes' : 'no' });
+      tr.createEl('td', { text: change.tasksPath ? `${change.taskProgress.totalDone}/${change.taskProgress.totalCount}` : 'missing' });
+      tr.createEl('td', { text: String(change.specDeltaPaths?.length ?? 0) });
+      tr.createEl('td', { text: String(change.evidencePaths?.length ?? 0) });
+    }
+  }
+
+  private renderReviewPanel(parent: HTMLElement, entry: ProjectEntry): void {
+    parent.createEl('h3', { text: '本地审阅' });
+    const panel = parent.createDiv({ cls: 'plupro-review-panel' });
+    const sourceSelect = panel.createEl('select', { cls: 'plupro-select' });
+    const sources = this.reviewSourcesForProject(entry);
+    for (const source of sources) {
+      sourceSelect.createEl('option', { text: source.label, value: source.path });
+    }
+    const excerpt = panel.createEl('textarea', {
+      cls: 'plupro-textarea',
+      attr: { placeholder: '选区摘录或上下文' },
+    });
+    const body = panel.createEl('textarea', {
+      cls: 'plupro-textarea',
+      attr: { placeholder: '批注 / prompt / 架构问题' },
+    });
+    const saveBtn = panel.createEl('button', { cls: 'plupro-secondary-btn', text: '保存批注 sidecar' });
+    saveBtn.addEventListener('click', async () => {
+      const selectedPath = sourceSelect.value;
+      if (!selectedPath || !body.value.trim()) {
+        new Notice('请选择 source 并填写批注内容');
+        return;
+      }
+      const changeSlug = sources.find((source) => source.path === selectedPath)?.changeSlug;
+      await this.plugin.createReviewForSource({
+        sourcePath: selectedPath,
+        body: body.value.trim(),
+        excerpt: excerpt.value.trim() || undefined,
+        projectSlug: entry.manifest.slug,
+        changeSlug,
+      });
+      body.value = '';
+      excerpt.value = '';
+      new Notice('已保存本地 review sidecar');
+    });
+
+    const openReviews = this.plugin
+      .getIndex()
+      .reviewRecords.filter((record) => record.projectSlug === entry.manifest.slug && record.status !== 'dismissed');
+    if (openReviews.length > 0) {
+      const list = panel.createEl('ul', { cls: 'plupro-review-list' });
+      for (const record of openReviews.slice(0, 8)) {
+        const li = list.createEl('li', { cls: 'plupro-review-item' });
+        li.createDiv({ cls: 'plupro-health-title', text: `${record.status}${record.stale ? ' · stale' : ''}` });
+        li.createDiv({ cls: 'plupro-health-message', text: record.body });
+        li.createDiv({ cls: 'plupro-path', text: record.sourcePath });
+      }
+    }
+  }
+
+  private renderContextPackage(projectSlug: string, changeSlug?: string): void {
+    if (!this.detailPaneEl) return;
+    const existing = this.detailPaneEl.querySelector('.plupro-context-output');
+    existing?.remove();
+    const pkg = this.plugin.createContextPackage({ projectSlug, changeSlug });
+    const output = this.detailPaneEl.createDiv({ cls: 'plupro-context-output' });
+    output.createEl('h3', { text: 'AI 上下文包' });
+    output.createEl('pre', { cls: 'plupro-pre', text: pkg.prompt });
+    if (pkg.excludedPaths.length > 0) {
+      output.createDiv({
+        cls: 'plupro-muted',
+        text: `已排除:${pkg.excludedPaths.map((item) => `${item.path}(${item.reason})`).join(', ')}`,
+      });
+    }
+  }
+
+  private renderValidateCommand(changeSlug: string): void {
+    if (!this.detailPaneEl) return;
+    const existing = this.detailPaneEl.querySelector('.plupro-validate-output');
+    existing?.remove();
+    const output = this.detailPaneEl.createDiv({ cls: 'plupro-validate-output plupro-context-output' });
+    output.createEl('h3', { text: 'OpenSpec validate' });
+    output.createEl('pre', {
+      cls: 'plupro-pre',
+      text: `openspec validate ${changeSlug} --strict --no-interactive`,
+    });
+    output.createDiv({
+      cls: 'plupro-muted',
+      text: '该动作只展示只读验证命令;归档仍需要人工在 OpenSpec 流程中确认。',
+    });
+  }
+
+  private reviewSourcesForProject(entry: ProjectEntry): Array<{ label: string; path: string; changeSlug?: string }> {
+    const sources: Array<{ label: string; path: string; changeSlug?: string }> = [
+      { label: `Project manifest: ${entry.manifest.slug}`, path: entry.manifest.manifestPath },
+    ];
+    for (const change of entry.changes) {
+      sources.push({ label: `${change.slug} proposal`, path: change.proposalPath, changeSlug: change.slug });
+      if (change.designPath) sources.push({ label: `${change.slug} design`, path: change.designPath, changeSlug: change.slug });
+      if (change.tasksPath) sources.push({ label: `${change.slug} tasks`, path: change.tasksPath, changeSlug: change.slug });
+    }
+    return sources;
   }
 
   private renderUnassignedDetail(snapshot: ProjectIndexSnapshot): void {
@@ -357,4 +734,9 @@ export class ControlTowerView extends ItemView {
     const fill = bar.createDiv({ cls: 'plupro-progress-fill' });
     fill.style.width = `${pct}%`;
   }
+}
+
+function entryHasIssue(entry: ProjectEntry | undefined, issue: HealthIssue): boolean {
+  if (!entry || !issue.changeSlug) return false;
+  return entry.changes.some((change) => change.slug === issue.changeSlug);
 }

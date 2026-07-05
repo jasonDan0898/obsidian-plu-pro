@@ -132,6 +132,25 @@
 .plupro-analyze-btn:hover {
   background-color: var(--interactive-accent-hover);
 }
+.plupro-secondary-btn,
+.plupro-small-btn {
+  border: 1px solid var(--background-modifier-border);
+  background-color: var(--background-secondary);
+  color: var(--text-normal);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.plupro-secondary-btn {
+  padding: 6px 12px;
+}
+.plupro-small-btn {
+  padding: 3px 8px;
+  font-size: 0.8em;
+}
+.plupro-secondary-btn:hover,
+.plupro-small-btn:hover {
+  background-color: var(--background-modifier-hover);
+}
 .plupro-badge {
   display: inline-block;
   font-size: 0.7em;
@@ -203,4 +222,154 @@
   margin: 8px 0 4px 0;
   list-style: none;
   text-align: center;
+}
+.plupro-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px;
+  margin: 12px 0 18px 0;
+}
+.plupro-metric-cell {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 10px;
+  min-width: 0;
+  background-color: var(--background-secondary);
+}
+.plupro-metric-value {
+  font-size: 1.2em;
+  font-weight: 700;
+  color: var(--text-normal);
+}
+.plupro-metric-label,
+.plupro-muted {
+  color: var(--text-muted);
+  font-size: 0.85em;
+}
+.plupro-inline-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0 10px 0;
+}
+.plupro-vision,
+.plupro-next-action {
+  border-left: 3px solid var(--interactive-accent);
+  padding: 6px 10px;
+  margin: 8px 0;
+  background-color: var(--background-secondary);
+}
+.plupro-ai-board {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 10px;
+  margin: 10px 0 16px 0;
+  background-color: var(--background-secondary);
+}
+.plupro-ai-assignment-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.plupro-ai-assignment {
+  border-top: 1px solid var(--background-modifier-border);
+  padding: 10px 0;
+}
+.plupro-ai-assignment:first-child {
+  border-top: 0;
+}
+.plupro-ai-assignment-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.plupro-preview-diff {
+  max-height: 48vh;
+  overflow: auto;
+}
+.plupro-health-list,
+.plupro-long-task-list,
+.plupro-review-list {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 14px 0;
+}
+.plupro-health-item,
+.plupro-long-task,
+.plupro-review-item {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 8px;
+  margin-bottom: 6px;
+  background-color: var(--background-primary);
+}
+.plupro-health-item.is-error,
+.plupro-long-task.is-blocked {
+  border-color: var(--background-modifier-error);
+}
+.plupro-health-item.is-warning {
+  border-color: rgba(234, 179, 8, 0.6);
+}
+.plupro-health-title,
+.plupro-long-task-title {
+  font-weight: 650;
+}
+.plupro-health-message,
+.plupro-health-action,
+.plupro-long-task-meta,
+.plupro-path {
+  color: var(--text-muted);
+  font-size: 0.86em;
+  overflow-wrap: anywhere;
+}
+.plupro-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 8px 0 16px 0;
+  table-layout: fixed;
+}
+.plupro-table th,
+.plupro-table td {
+  border-bottom: 1px solid var(--background-modifier-border);
+  padding: 6px;
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+.plupro-scenario.is-blocked td {
+  background-color: rgba(220, 38, 38, 0.08);
+}
+.plupro-scenario.is-attention td {
+  background-color: rgba(234, 179, 8, 0.08);
+}
+.plupro-review-panel,
+.plupro-context-output {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 10px;
+  margin: 8px 0 16px 0;
+}
+.plupro-select,
+.plupro-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 8px;
+}
+.plupro-textarea {
+  min-height: 70px;
+  resize: vertical;
+}
+.plupro-pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background-color: var(--background-secondary);
+  border-radius: 6px;
+  padding: 8px;
+  font-family: var(--font-monospace);
+  font-size: 0.85em;
+}
+.plupro-change-actions {
+  margin: 4px 0;
 }

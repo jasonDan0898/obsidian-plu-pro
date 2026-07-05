@@ -51,4 +51,25 @@ describe('ChangeScanner.scanChangeFromDisk', () => {
     });
     expect(entry.blockers).toEqual([]);
   });
+
+  it('记录 design/spec delta/evidence 路径和 slug 健康字段', () => {
+    const proposalText = readFixture('sample-change/proposal.md');
+    const tasksText = readFixture('sample-change/tasks.md');
+    const entry = scanChangeFromDisk({
+      slug: 'bad_中文',
+      proposalPath: 'openspec/changes/bad_中文/proposal.md',
+      proposalText,
+      tasksText,
+      tasksPath: 'openspec/changes/bad_中文/tasks.md',
+      designPath: 'openspec/changes/bad_中文/design.md',
+      specDeltaPaths: ['openspec/changes/bad_中文/specs/demo/spec.md'],
+      evidencePaths: ['openspec/changes/bad_中文/notes/acceptance/check.md'],
+    });
+
+    expect(entry.hasTasks).toBe(true);
+    expect(entry.hasSpecDelta).toBe(true);
+    expect(entry.isValidSlug).toBe(false);
+    expect(entry.sourcePaths).toContain('openspec/changes/bad_中文/design.md');
+    expect(entry.proposalHash).toMatch(/^fnv1a-/);
+  });
 });

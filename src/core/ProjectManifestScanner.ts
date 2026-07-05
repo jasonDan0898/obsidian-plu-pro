@@ -1,5 +1,5 @@
 import type { App, TFile, TFolder } from 'obsidian';
-import type { ProjectManifest, ProjectStatus, ProjectSystem } from '../types';
+import type { ProjectManifest, ProjectPhase, ProjectStatus, ProjectSystem } from '../types';
 import { parseFrontmatterFromText } from './FrontmatterIO';
 
 const VALID_STATUSES: ProjectStatus[] = ['active', 'paused', 'done', 'archived'];
@@ -14,7 +14,30 @@ function asString(v: unknown): string | undefined {
 
 function asStringArray(v: unknown): string[] | undefined {
   if (!Array.isArray(v)) return undefined;
-  return v.filter((x): x is string => typeof x === 'string');
+  return v
+    .map((x) => {
+      if (typeof x === 'string') return x;
+      if (x && typeof x === 'object' && !Array.isArray(x)) {
+        const entries = Object.entries(x as Record<string, unknown>);
+        if (entries.length === 1) {
+          const [key, value] = entries[0];
+          return `${key}: ${String(value)}`;
+        }
+      }
+      return undefined;
+    })
+    .filter((x): x is string => typeof x === 'string');
+}
+
+function asNumberRecord(v: unknown): Record<string, number> | undefined {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return undefined;
+  const out: Record<string, number> = {};
+  for (const [key, value] of Object.entries(v as Record<string, unknown>)) {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      out[key] = value;
+    }
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 export function parseManifestFromText(
@@ -40,15 +63,25 @@ export function parseManifestFromText(
     slug,
     title,
     status,
+    phase: asString(fm.phase) as ProjectPhase | undefined,
     owner: asString(fm.owner),
     created: asString(fm.created),
     updated: asString(fm.updated),
+    deadline: asString(fm.deadline),
+    vision: asString(fm.vision),
+    goals: asStringArray(fm.goals),
     scope: asStringArray(fm.scope),
+    successCriteria: asStringArray(fm['success-criteria']),
+    nonGoals: asStringArray(fm['non-goals']),
+    risks: asStringArray(fm.risks),
     tags: asStringArray(fm.tags),
     manifestPath,
     pendingAnalysis: typeof fm['pending-analysis'] === 'boolean' ? fm['pending-analysis'] : false,
     generatedChanges: asStringArray(fm['generated-changes']),
     lastAnalyzed: asString(fm['last-analyzed']),
+    superpowersSpecs: asStringArray(fm['superpowers-specs']),
+    superpowersPlans: asStringArray(fm['superpowers-plans']),
+    deviationFlags: asNumberRecord(fm['deviation-flags']),
     system: (() => {
       const raw = asString(fm.system);
       return raw && VALID_SYSTEMS.includes(raw as ProjectSystem)

@@ -65,6 +65,16 @@
 - [ ] 6.7 点未分类 chip:显示「自动生成标准层叠编码」「自动设置规则」等无 system 字段的项目
 - [ ] 6.8 切换 chip 时,右侧已选中项目卡片状态不消失
 
+## 流程 7:AI 协作台闭环
+
+- [ ] 7.1 打开控制塔首页,右侧出现「AI 协作台」区域
+- [ ] 7.2 进入任意项目详情,在某个 change 行点击「AI 任务」
+- [ ] 7.3 `_meta/openspec-control-tower/ai-assignments/<id>.json` 生成,内容含 `readContext` / `excludeReasons` / `resultPath`
+- [ ] 7.4 AI 协作台出现该任务,命令为 `codex --assignment _meta/openspec-control-tower/ai-assignments/<id>.json`
+- [ ] 7.5 手动运行命令后,将结果写入 `_meta/openspec-control-tower/ai-results/<id>.json`
+- [ ] 7.6 点击「扫描结果」后,生成 `_meta/openspec-control-tower/evidence/<id>.json`,任务状态变为 `returned`
+- [ ] 7.7 对同一 change 再生成任务时,确认 `.env` / `node_modules` / `dist` / lockfile / 大文件不会进入 `readContext`
+
 ## 已知 v1 限制(非缺陷)
 
 - 不解析 markdown body 内容

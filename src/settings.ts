@@ -55,6 +55,20 @@ export class PluProSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
+      .setName('控制塔 sidecar 目录')
+      .setDesc('相对 vault 根目录,用于保存 reviews / ADR / write-previews / scenario-simulations')
+      .addText((text) =>
+        text
+          .setPlaceholder('_meta/openspec-control-tower')
+          .setValue(this.plugin.settings.controlTowerMetaPath)
+          .onChange(async (value) => {
+            this.plugin.settings.controlTowerMetaPath = value || DEFAULT_SETTINGS.controlTowerMetaPath;
+            await this.plugin.saveSettings();
+            await this.plugin.refreshIndex();
+          }),
+      );
+
+    new Setting(containerEl)
       .setName('启用 capability 归并 fallback')
       .setDesc('未分类时根据 change.capability 推荐项目')
       .addToggle((toggle) =>

@@ -1,6 +1,7 @@
 import type { App, TFile, TFolder } from 'obsidian';
 import type { ChangeEntry, ChangeFrontmatter } from '../types';
 import { parseFrontmatterFromText } from './FrontmatterIO';
+import { stableHash } from './Hash';
 import { parseTasks } from './TasksParser';
 
 export interface ScanInput {
@@ -8,7 +9,13 @@ export interface ScanInput {
   proposalPath: string;
   proposalText: string;
   tasksText: string | undefined;
+  tasksPath?: string;
+  designPath?: string;
+  specDeltaPaths?: string[];
+  evidencePaths?: string[];
 }
+
+const KEBAB_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 export function scanChangeFromDisk(input: ScanInput): ChangeEntry {
   const frontmatter = parseFrontmatterFromText(input.proposalText) as ChangeFrontmatter;
@@ -22,6 +29,22 @@ export function scanChangeFromDisk(input: ScanInput): ChangeEntry {
     frontmatter,
     taskProgress,
     blockers: [],
+    tasksPath: input.tasksPath,
+    designPath: input.designPath,
+    specDeltaPaths: input.specDeltaPaths ?? [],
+    evidencePaths: input.evidencePaths ?? [],
+    sourcePaths: [
+      input.proposalPath,
+      input.designPath,
+      input.tasksPath,
+      ...(input.specDeltaPaths ?? []),
+      ...(input.evidencePaths ?? []),
+    ].filter((p): p is string => typeof p === 'string'),
+    proposalHash: stableHash(input.proposalText),
+    hasTasks: typeof input.tasksText === 'string',
+    hasSpecDelta: (input.specDeltaPaths ?? []).length > 0,
+    isValidSlug: KEBAB_SLUG.test(input.slug),
+    linkSources: [],
   };
 }
 
@@ -59,13 +82,44 @@ export class ChangeScanner {
 
     const proposalText = await this.app.vault.read(proposal);
     const tasksText = tasks ? await this.app.vault.read(tasks) : undefined;
+    const design = folder.children.find(
+      (f) => this.isFile(f) && (f as TFile).basename === 'design',
+    ) as TFile | undefined;
+    const specDeltaPaths = this.findFiles(folder, (file) =>
+      file.path.startsWith(`${folder.path}/specs/`) && file.basename === 'spec',
+    ).map((file) => file.path);
+    const evidencePaths = this.findFiles(folder, (file) =>
+      /\/(notes\/acceptance|evidence)\//.test(file.path) && file.extension === 'md',
+    ).map((file) => file.path);
 
     return scanChangeFromDisk({
       slug: folder.name,
       proposalPath: proposal.path,
       proposalText,
       tasksText,
+      tasksPath: tasks?.path,
+      designPath: design?.path,
+      specDeltaPaths,
+      evidencePaths,
     });
+  }
+
+  private findFiles(folder: TFolder, predicate: (file: TFile) => boolean): TFile[] {
+    const out: TFile[] = [];
+    const visit = (node: TFolder): void => {
+      for (const child of node.children) {
+        if (this.isFile(child)) {
+          const file = child as TFile;
+          if (predicate(file)) {
+            out.push(file);
+          }
+        } else if (this.isFolder(child)) {
+          visit(child as TFolder);
+        }
+      }
+    };
+    visit(folder);
+    return out;
   }
 
   private isFolder(item: unknown): item is TFolder {

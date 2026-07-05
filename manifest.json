@@ -1,7 +1,7 @@
 {
   "id": "obsidian-plu-pro",
   "name": "PluPro 项目控制塔",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "minAppVersion": "1.4.0",
   "description": "按主题项目维度聚合 OpenSpec changes / 任务进度 / 阻塞依赖的项目控制塔。",
   "author": "danwei",

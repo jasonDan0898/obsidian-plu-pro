@@ -1,8 +1,9 @@
-import type { TaskProgress, TaskGroupProgress } from '../types';
+import type { TaskItem, TaskProgress, TaskGroupProgress } from '../types';
 
 const SECTION_HEADER = /^##\s+(.+?)\s*$/;
 const TASK_DONE = /^\s*-\s*\[x\]\s/i;
 const TASK_TODO = /^\s*-\s*\[ \]\s/;
+const TASK_LINE = /^\s*-\s*\[( |x|X)\]\s+(.*)$/;
 const COMMENT_OPEN = /<!--/;
 const COMMENT_CLOSE = /-->/;
 const INLINE_COMMENT = /<!--.*?-->/g;
@@ -17,8 +18,10 @@ export function parseTasks(text: string): TaskProgress {
   let current: TaskGroupProgress = { heading: '(未分组)', done: 0, total: 0 };
   let seenAny = false;
   let inComment = false;
+  const items: TaskItem[] = [];
 
-  for (const rawLine of lines) {
+  for (let index = 0; index < lines.length; index += 1) {
+    const rawLine = lines[index];
     if (inComment) {
       if (COMMENT_CLOSE.test(rawLine)) {
         inComment = false;
@@ -49,6 +52,16 @@ export function parseTasks(text: string): TaskProgress {
     } else if (TASK_TODO.test(line)) {
       current.total += 1;
     }
+
+    const itemMatch = line.match(TASK_LINE);
+    if (itemMatch) {
+      items.push({
+        line: index + 1,
+        heading: current.heading,
+        text: itemMatch[2].trim(),
+        done: itemMatch[1].toLowerCase() === 'x',
+      });
+    }
   }
 
   if (seenAny || current.total > 0) {
@@ -61,6 +74,7 @@ export function parseTasks(text: string): TaskProgress {
 
   const totalDone = groups.reduce((sum, g) => sum + g.done, 0);
   const totalCount = groups.reduce((sum, g) => sum + g.total, 0);
+  const nextOpenTask = items.find((item) => !item.done);
 
-  return { totalDone, totalCount, groups };
+  return { totalDone, totalCount, groups, items, nextOpenTask };
 }

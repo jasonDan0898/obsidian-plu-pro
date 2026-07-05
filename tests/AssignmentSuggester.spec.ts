@@ -25,6 +25,8 @@ const projectEntry = (slug: string, scope: string[], changes: ChangeEntry[]): Pr
   manifest: manifest(slug, scope),
   changes,
   progress: { totalDone: 0, totalCount: 0, changeCount: changes.length, changesDone: 0 },
+  generatedChanges: [],
+  reverseLinkedChanges: changes.map((c) => c.slug),
 });
 
 describe('AssignmentSuggester.suggestProjects', () => {

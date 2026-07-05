@@ -79,6 +79,42 @@ generated-changes:
     expect(m.lastAnalyzed).toBe('2026-05-18T10:30:00.000Z');
   });
 
+  it('提取架构规划相关字段', () => {
+    const text = `---
+type: project
+slug: arch-proj
+title: 架构项目
+status: active
+phase: brainstorming
+vision: 把多长任务统一管理起来
+goals:
+  - G1: 建立控制塔
+success-criteria:
+  - 可看到长任务
+non-goals:
+  - 不做远程发布
+risks:
+  - 状态漂移
+superpowers-specs:
+  - docs/superpowers/specs/x.md
+superpowers-plans:
+  - docs/superpowers/plans/x.md
+deviation-flags:
+  blockers-new: 2
+---
+`;
+    const m = parseManifestFromText(text, '_projects/arch-proj.md')!;
+    expect(m.phase).toBe('brainstorming');
+    expect(m.vision).toBe('把多长任务统一管理起来');
+    expect(m.goals).toEqual(['G1: 建立控制塔']);
+    expect(m.successCriteria).toEqual(['可看到长任务']);
+    expect(m.nonGoals).toEqual(['不做远程发布']);
+    expect(m.risks).toEqual(['状态漂移']);
+    expect(m.superpowersSpecs).toEqual(['docs/superpowers/specs/x.md']);
+    expect(m.superpowersPlans).toEqual(['docs/superpowers/plans/x.md']);
+    expect(m.deviationFlags).toEqual({ 'blockers-new': 2 });
+  });
+
   it('pending-analysis 缺失默认为 false', () => {
     const text = `---
 type: project

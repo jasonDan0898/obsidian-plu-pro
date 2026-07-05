@@ -119,4 +119,49 @@ describe('ProjectIndex.buildIndex', () => {
     const entry = idx.projects.get('proj-a')!;
     expect(entry.manifest.title).toBe('先扫到');
   });
+
+  it('用 generated-changes 反向挂载未声明 project 的 change', () => {
+    const idx = buildIndex({
+      manifests: [{ ...manifest('proj-a'), generatedChanges: ['c1'] }],
+      changes: [change('c1', {}, 0, 2)],
+    });
+    expect(idx.unassigned).toHaveLength(0);
+    const entry = idx.projects.get('proj-a')!;
+    expect(entry.changes.map((c) => c.slug)).toEqual(['c1']);
+    expect(entry.changes[0].linkSources).toEqual(['generated-changes']);
+  });
+
+  it('生成 OpenSpec health issues 和 overview 指标', () => {
+    const idx = buildIndex({
+      manifests: [manifest('proj-a')],
+      changes: [
+        {
+          ...change('bad_slug', { project: 'missing-proj' }, 0, 0),
+          hasTasks: false,
+          hasSpecDelta: false,
+          isValidSlug: false,
+        },
+      ],
+      documents: [
+        {
+          id: 'doc:stale',
+          kind: 'sidecar',
+          path: '_meta/openspec-control-tower/openspec-index.json',
+          source: 'derived',
+          metadata: { staleReasons: ['vaultRoot=/Users/danwei/Documents/HIC'] },
+        },
+      ],
+    });
+
+    expect(idx.healthIssues.map((issue) => issue.id)).toEqual(
+      expect.arrayContaining([
+        'invalid-project:openspec/changes/bad_slug/proposal.md',
+        'invalid-change-slug:bad_slug',
+        'missing-tasks:bad_slug',
+        'missing-spec-delta:bad_slug',
+        'stale-index:_meta/openspec-control-tower/openspec-index.json',
+      ]),
+    );
+    expect(idx.overview.metadataWarningCount).toBeGreaterThanOrEqual(5);
+  });
 });

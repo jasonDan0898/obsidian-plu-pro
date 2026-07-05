@@ -1,18 +1,25 @@
 import type {
   AggregateProgress,
   ChangeEntry,
+  DocumentRecord,
   OrphanRef,
   ProjectEntry,
   ProjectIndexSnapshot,
   ProjectManifest,
   ProjectSlug,
+  RelationshipEdge,
+  ReviewRecord,
   SlugConflict,
 } from '../types';
 import { parseChangeRefs } from './ChangeRefParser';
+import { analyzeHealth, deriveLongTasks, recommendNextActionForChange, summarizeOverview } from './HealthAnalyzer';
+import { simulateScenarios } from './ScenarioCatalog';
 
 export interface BuildInput {
   manifests: ProjectManifest[];
   changes: ChangeEntry[];
+  documents?: DocumentRecord[];
+  reviewRecords?: ReviewRecord[];
 }
 
 function aggregate(changes: ChangeEntry[]): AggregateProgress {
@@ -60,16 +67,34 @@ export function buildIndex(input: BuildInput): ProjectIndexSnapshot {
   const enrichedChanges: ChangeEntry[] = input.changes.map((c) => ({
     ...c,
     blockers: parseChangeRefs(c.frontmatter.related, knownSlugs),
+    linkSources: [],
   }));
 
   const projects = new Map<ProjectSlug, ProjectEntry>();
   const unassigned: ChangeEntry[] = [];
   const orphanRefs: OrphanRef[] = [];
+  const generatedOwners = new Map<string, ProjectSlug[]>();
+
+  for (const manifest of input.manifests) {
+    for (const slug of manifest.generatedChanges ?? []) {
+      const owners = generatedOwners.get(slug) ?? [];
+      owners.push(manifest.slug);
+      generatedOwners.set(slug, owners);
+    }
+  }
 
   for (const c of enrichedChanges) {
     const declared = c.frontmatter.project;
     if (!declared) {
-      unassigned.push(c);
+      const generatedOwner = generatedOwners.get(c.slug)?.[0];
+      if (generatedOwner && manifestBySlug.has(generatedOwner)) {
+        addChangeToProject(projects, manifestBySlug.get(generatedOwner)!, {
+          ...c,
+          linkSources: ['generated-changes'],
+        });
+      } else {
+        unassigned.push(c);
+      }
       continue;
     }
     const manifest = manifestBySlug.get(declared as ProjectSlug);
@@ -78,16 +103,16 @@ export function buildIndex(input: BuildInput): ProjectIndexSnapshot {
       unassigned.push(c);
       continue;
     }
-    let entry = projects.get(declared as ProjectSlug);
-    if (!entry) {
-      entry = { manifest, changes: [], progress: aggregate([]) };
-      projects.set(declared as ProjectSlug, entry);
-    }
-    entry.changes.push(c);
+    addChangeToProject(projects, manifest, { ...c, linkSources: ['proposal-project'] });
   }
 
   for (const [slug, entry] of projects) {
     entry.progress = aggregate(entry.changes);
+    entry.generatedChanges = entry.manifest.generatedChanges ?? [];
+    entry.reverseLinkedChanges = entry.changes
+      .filter((change) => change.linkSources?.includes('proposal-project'))
+      .map((change) => change.slug);
+    entry.nextAction = recommendProjectEntryAction(entry);
     projects.set(slug, entry);
   }
 
@@ -97,9 +122,198 @@ export function buildIndex(input: BuildInput): ProjectIndexSnapshot {
         manifest,
         changes: [],
         progress: aggregate([]),
+        generatedChanges: manifest.generatedChanges ?? [],
+        reverseLinkedChanges: [],
+        nextAction: manifest.pendingAnalysis
+          ? `/analyze-project ${manifest.slug}`
+          : '完善 project vision/goals 并拆解 OpenSpec change',
       });
     }
   }
 
-  return { projects, unassigned, orphanRefs, slugConflicts };
+  const documents = [
+    ...(input.documents ?? []),
+    ...documentRecordsForProjects(input.manifests),
+    ...documentRecordsForChanges(enrichedChanges),
+  ];
+  const relationships = buildRelationships(projects);
+  const healthIssues = analyzeHealth({ projects, unassigned, orphanRefs, slugConflicts, documents });
+  const partial: ProjectIndexSnapshot = {
+    projects,
+    unassigned,
+    orphanRefs,
+    slugConflicts,
+    documents,
+    relationships,
+    healthIssues,
+    overview: {
+      projectCount: 0,
+      activeChangeCount: 0,
+      blockerCount: 0,
+      unresolvedBlockerCount: 0,
+      taskDone: 0,
+      taskTotal: 0,
+      archiveCandidateCount: 0,
+      pendingAnalysisCount: 0,
+      metadataWarningCount: 0,
+      longTaskCount: 0,
+    },
+    longTasks: [],
+    scenarioResults: [],
+    reviewRecords: input.reviewRecords ?? [],
+  };
+  partial.longTasks = deriveLongTasks(projects, unassigned);
+  partial.overview = summarizeOverview(partial);
+  partial.scenarioResults = simulateScenarios(partial);
+  return partial;
+}
+
+export function createEmptySnapshot(): ProjectIndexSnapshot {
+  return {
+    projects: new Map(),
+    unassigned: [],
+    orphanRefs: [],
+    slugConflicts: [],
+    documents: [],
+    relationships: [],
+    healthIssues: [],
+    overview: {
+      projectCount: 0,
+      activeChangeCount: 0,
+      blockerCount: 0,
+      unresolvedBlockerCount: 0,
+      taskDone: 0,
+      taskTotal: 0,
+      archiveCandidateCount: 0,
+      pendingAnalysisCount: 0,
+      metadataWarningCount: 0,
+      longTaskCount: 0,
+    },
+    longTasks: [],
+    scenarioResults: [],
+    reviewRecords: [],
+  };
+}
+
+function addChangeToProject(
+  projects: Map<ProjectSlug, ProjectEntry>,
+  manifest: ProjectManifest,
+  change: ChangeEntry,
+): void {
+  let entry = projects.get(manifest.slug);
+  if (!entry) {
+    entry = {
+      manifest,
+      changes: [],
+      progress: aggregate([]),
+      generatedChanges: manifest.generatedChanges ?? [],
+      reverseLinkedChanges: [],
+    };
+    projects.set(manifest.slug, entry);
+  }
+  if (!entry.changes.some((existing) => existing.slug === change.slug)) {
+    entry.changes.push(change);
+  }
+}
+
+function recommendProjectEntryAction(entry: ProjectEntry): string {
+  if (entry.manifest.pendingAnalysis) return `/analyze-project ${entry.manifest.slug}`;
+  const next = entry.changes.find((change) => change.taskProgress.nextOpenTask);
+  if (next) return recommendNextActionForChange(next);
+  if (entry.progress.changeCount === 0) return '拆解 OpenSpec changes';
+  return '检查 OpenSpec health 并运行 validate';
+}
+
+function documentRecordsForProjects(manifests: ProjectManifest[]): DocumentRecord[] {
+  return manifests.map((manifest) => ({
+    id: `project:${manifest.slug}`,
+    kind: 'project',
+    path: manifest.manifestPath,
+    title: manifest.title,
+    projectSlug: manifest.slug,
+    source: 'source',
+  }));
+}
+
+function documentRecordsForChanges(changes: ChangeEntry[]): DocumentRecord[] {
+  const out: DocumentRecord[] = [];
+  for (const change of changes) {
+    out.push({
+      id: `change:${change.slug}:proposal`,
+      kind: 'proposal',
+      path: change.proposalPath,
+      title: change.slug,
+      projectSlug: typeof change.frontmatter.project === 'string' ? change.frontmatter.project : undefined,
+      changeSlug: change.slug,
+      hash: change.proposalHash,
+      source: 'source',
+    });
+    if (change.designPath) {
+      out.push({
+        id: `change:${change.slug}:design`,
+        kind: 'design',
+        path: change.designPath,
+        title: `${change.slug} design`,
+        changeSlug: change.slug,
+        source: 'source',
+      });
+    }
+    if (change.tasksPath) {
+      out.push({
+        id: `change:${change.slug}:tasks`,
+        kind: 'tasks',
+        path: change.tasksPath,
+        title: `${change.slug} tasks`,
+        changeSlug: change.slug,
+        source: 'source',
+      });
+    }
+    for (const path of change.specDeltaPaths ?? []) {
+      out.push({
+        id: `change:${change.slug}:spec:${path}`,
+        kind: 'spec-delta',
+        path,
+        title: `${change.slug} spec delta`,
+        changeSlug: change.slug,
+        source: 'source',
+      });
+    }
+    for (const path of change.evidencePaths ?? []) {
+      out.push({
+        id: `change:${change.slug}:evidence:${path}`,
+        kind: 'evidence',
+        path,
+        title: `${change.slug} evidence`,
+        changeSlug: change.slug,
+        source: 'source',
+      });
+    }
+  }
+  return out;
+}
+
+function buildRelationships(projects: Map<ProjectSlug, ProjectEntry>): RelationshipEdge[] {
+  const edges: RelationshipEdge[] = [];
+  for (const entry of projects.values()) {
+    for (const change of entry.changes) {
+      edges.push({
+        fromId: `project:${entry.manifest.slug}`,
+        toId: `change:${change.slug}:proposal`,
+        kind: change.linkSources?.includes('generated-changes') ? 'generated-change' : 'project-change',
+      });
+      if (change.designPath) {
+        edges.push({ fromId: `change:${change.slug}:proposal`, toId: `change:${change.slug}:design`, kind: 'change-design' });
+      }
+      if (change.tasksPath) {
+        edges.push({ fromId: `change:${change.slug}:proposal`, toId: `change:${change.slug}:tasks`, kind: 'change-task' });
+      }
+      for (const path of change.specDeltaPaths ?? []) {
+        edges.push({ fromId: `change:${change.slug}:proposal`, toId: `change:${change.slug}:spec:${path}`, kind: 'change-spec' });
+      }
+      for (const path of change.evidencePaths ?? []) {
+        edges.push({ fromId: `change:${change.slug}:proposal`, toId: `change:${change.slug}:evidence:${path}`, kind: 'change-evidence' });
+      }
+    }
+  }
+  return edges;
 }
